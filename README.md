@@ -8,7 +8,7 @@ server, or agent host.
 
 ## Install
 
-After publication to AUR:
+Published as [omnigent](https://aur.archlinux.org/packages/omnigent) on AUR:
 
 ```sh
 shelly install aur omnigent

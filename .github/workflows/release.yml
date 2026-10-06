@@ -41,7 +41,7 @@ jobs:
           fi
       - name: Build package and run checks
         if: steps.release.outputs.changed == 'true' || github.event_name != 'schedule'
-        run: runuser -u builder -- makepkg --cleanbuild --noconfirm
+        run: runuser -u builder -- makepkg --cleanbuild --check --noconfirm
       - name: Publish verified recipe to AUR
         if: steps.release.outputs.changed == 'true' || github.event_name != 'schedule'
         env:
