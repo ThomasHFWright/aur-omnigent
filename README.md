@@ -18,6 +18,12 @@ Launch **Omnigent** from the applications menu or run `omnigent-desktop`.
 The name of the launcher avoids colliding with the upstream Python CLI.
 The app's own binary updater is disabled; Shelly/pacman manages updates.
 
+Shelly flags the Node/pnpm commands in this source recipe. `pnpm install`
+downloads dependencies using upstream's frozen lockfile; the build commands
+execute upstream build tools, and `node --test` runs local OIDC tests. These
+warnings describe build-time code execution, not install scriptlets. Review
+them with the recipe; the package does not suppress Shelly's checks.
+
 To build locally without installing:
 
 ```sh
