@@ -1,0 +1,73 @@
+name: Build and publish AUR release
+on:
+  schedule:
+    - cron: '23 */6 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: [PKGBUILD, .SRCINFO, omnigent-desktop, omnigent-desktop.desktop, '.github/**']
+
+permissions:
+  contents: write
+concurrency:
+  group: aur-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    container: archlinux:base-devel
+    timeout-minutes: 45
+    steps:
+      - name: Install build tools
+        run: pacman -Syu --noconfirm --needed git openssh nodejs pnpm python alsa-lib gtk3 libdrm libxss libxtst mesa nss xdg-utils
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+      - name: Prepare unprivileged builder
+        run: |
+          useradd --create-home builder
+          chown -R builder:builder "$GITHUB_WORKSPACE"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+      - name: Check stable release
+        id: release
+        run: |
+          runuser -u builder -- python .github/scripts/update-release.py --self-test
+          runuser -u builder -- python .github/scripts/update-release.py
+          if git diff --quiet -- PKGBUILD .SRCINFO; then
+            echo changed=false >> "$GITHUB_OUTPUT"
+          else
+            echo changed=true >> "$GITHUB_OUTPUT"
+          fi
+      - name: Build package and run checks
+        if: steps.release.outputs.changed == 'true' || github.event_name != 'schedule'
+        run: runuser -u builder -- makepkg --cleanbuild --noconfirm
+      - name: Publish verified recipe to AUR
+        if: steps.release.outputs.changed == 'true' || github.event_name != 'schedule'
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          set -eu
+          key_dir=$(mktemp -d)
+          trap 'rm -rf "$key_dir"' EXIT
+          printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > "$key_dir/key"
+          chmod 600 "$key_dir/key"
+          export GIT_SSH_COMMAND="ssh -i $key_dir/key -o IdentitiesOnly=yes -o UserKnownHostsFile=$GITHUB_WORKSPACE/.github/aur-known-hosts -o StrictHostKeyChecking=yes"
+          git clone ssh://aur@aur.archlinux.org/omnigent.git "$key_dir/aur"
+          cp PKGBUILD .SRCINFO omnigent-desktop omnigent-desktop.desktop "$key_dir/aur/"
+          cd "$key_dir/aur"
+          git add PKGBUILD .SRCINFO omnigent-desktop omnigent-desktop.desktop
+          if ! git diff --cached --quiet; then
+            git -c user.name='github-actions[bot]' -c user.email='41898282+github-actions[bot]@users.noreply.github.com' commit -m 'Update verified Omnigent package'
+            git push origin HEAD:master
+          fi
+      - name: Record verified release
+        if: steps.release.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add PKGBUILD .SRCINFO
+          git commit -m 'Update Omnigent stable release'
+          git -c http.https://github.com/.extraheader="AUTHORIZATION: basic $(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)" push origin HEAD:main
