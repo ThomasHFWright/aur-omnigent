@@ -20,10 +20,15 @@ jobs:
     timeout-minutes: 45
     steps:
       - name: Install build tools
-        run: pacman -Syu --noconfirm --needed git openssh nodejs pnpm python alsa-lib gtk3 libdrm libxss libxtst mesa nss xdg-utils
+        run: pacman -Syu --noconfirm --needed git openssh python
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           persist-credentials: false
+      - name: Install declared package dependencies
+        shell: bash
+        run: |
+          mapfile -t deps < <(awk '$1 == "depends" || $1 == "makedepends" || $1 == "checkdepends" {print $3}' .SRCINFO)
+          pacman -S --noconfirm --needed "${deps[@]}"
       - name: Prepare unprivileged builder
         run: |
           useradd --create-home builder
@@ -53,7 +58,7 @@ jobs:
           printf '%s\n' "$AUR_SSH_PRIVATE_KEY" > "$key_dir/key"
           chmod 600 "$key_dir/key"
           export GIT_SSH_COMMAND="ssh -i $key_dir/key -o IdentitiesOnly=yes -o UserKnownHostsFile=$GITHUB_WORKSPACE/.github/aur-known-hosts -o StrictHostKeyChecking=yes"
-          git clone ssh://aur@aur.archlinux.org/omnigent.git "$key_dir/aur"
+          git clone ssh://aur@aur.archlinux.org/omnigent-desktop.git "$key_dir/aur"
           cp PKGBUILD .SRCINFO omnigent-desktop omnigent-desktop.desktop "$key_dir/aur/"
           cd "$key_dir/aur"
           git add PKGBUILD .SRCINFO omnigent-desktop omnigent-desktop.desktop
